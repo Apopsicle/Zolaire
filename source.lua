@@ -1,5 +1,5 @@
 -- Zolaire Interface Library
--- This is a beta test
+-- Still in development.
 
 local Zolaire = {}
 
@@ -47,7 +47,14 @@ end
 -- Create rounded corner function
 local function ApplyCorner(Object, Radius)
     local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, Radius or 5)
+    if type(Radius) == "table" then
+        Corner.CornerRadius = UDim.new(0, 0)
+        if Radius.TopLeft then
+            Instance.new("UICorner", Object).CornerRadius = UDim.new(0, Radius.TopLeft)
+        end
+    else
+        Corner.CornerRadius = UDim.new(0, Radius or 5)
+    end
     Corner.Parent = Object
     return Corner
 end
@@ -83,6 +90,7 @@ function Loader:Show()
     local Background = Instance.new("Frame")
     Background.Name = "Background"
     Background.BackgroundColor3 = Zolaire.Colors.Background
+    Background.BackgroundTransparency = 0
     Background.Size = UDim2.new(1, 0, 1, 0)
     Background.Parent = LoaderContainer
     
@@ -145,6 +153,7 @@ function Loader:Show()
     self.BarFill = BarFill
     self.PercentageText = PercentageText
     self.LoadingText = LoadingText
+    self.Background = Background
     
     -- Parent to CoreGui
     LoaderContainer.Parent = Zolaire.Settings.ScreenGuiParent
@@ -189,9 +198,14 @@ function Loader:Hide()
     
     -- Fade out animation
     if self.Container then
-        Tween(self.Container, {
-            BackgroundTransparency = 1
-        }, 0.5):Play()
+        local children = self.Container:GetChildren()
+        for _, child in ipairs(children) do
+            if child:IsA("Frame") then
+                Tween(child, {
+                    BackgroundTransparency = 1
+                }, 0.5)
+            end
+        end
         
         task.wait(0.5)
         
@@ -201,6 +215,10 @@ function Loader:Hide()
     end
     
     self.Container = nil
+    self.BarFill = nil
+    self.PercentageText = nil
+    self.LoadingText = nil
+    self.Background = nil
 end
 
 -- Initialize Zolaire
@@ -297,6 +315,7 @@ function Zolaire:ToggleInterface()
     local Windows = self.Interface:GetDescendants()
     local isVisible = false
     
+    -- Check if any window is visible
     for _, Window in ipairs(Windows) do
         if Window:IsA("Frame") and Window.Name == "Window" then
             isVisible = Window.Visible
@@ -304,6 +323,7 @@ function Zolaire:ToggleInterface()
         end
     end
     
+    -- Toggle all windows
     for _, Window in ipairs(Windows) do
         if Window:IsA("Frame") and Window.Name == "Window" then
             Window.Visible = not isVisible
@@ -339,6 +359,7 @@ function Zolaire:CreateWindow(WindowConfig)
     WindowFrame.Size = Window.Config.Size
     WindowFrame.Position = Window.Config.Position
     WindowFrame.ClipsDescendants = true
+    WindowFrame.Visible = true
     WindowFrame.Parent = self.Interface
     
     ApplyCorner(WindowFrame, 8)
@@ -351,7 +372,10 @@ function Zolaire:CreateWindow(WindowConfig)
     TopBar.Size = UDim2.new(1, 0, 0, 40)
     TopBar.Parent = WindowFrame
     
-    ApplyCorner(TopBar, {TopLeft = 8, TopRight = 8, BottomLeft = 0, BottomRight = 0})
+    -- Top bar corners
+    local TopCorner = Instance.new("UICorner")
+    TopCorner.CornerRadius = UDim.new(0, 8)
+    TopCorner.Parent = TopBar
     
     -- Window title
     local Title = Instance.new("TextLabel")
@@ -463,6 +487,23 @@ function Zolaire:CreateWindow(WindowConfig)
     function Window:CreateTab(TabName)
         local Tab = {}
         
+        -- Tab button container (for positioning)
+        local TabButtonContainer = Instance.new("Frame")
+        TabButtonContainer.Name = "TabButtons"
+        TabButtonContainer.BackgroundTransparency = 1
+        TabButtonContainer.Size = UDim2.new(1, 0, 0, 30)
+        TabButtonContainer.Position = UDim2.new(0, 0, 0, 40)
+        TabButtonContainer.Parent = Window.Instance
+        
+        -- Find existing tabs to position new one correctly
+        local existingTabs = TabButtonContainer:GetChildren()
+        local tabCount = 0
+        for _, child in ipairs(existingTabs) do
+            if child:IsA("TextButton") then
+                tabCount = tabCount + 1
+            end
+        end
+        
         -- Tab button
         local TabButton = Instance.new("TextButton")
         TabButton.Name = TabName .. "Tab"
@@ -472,8 +513,8 @@ function Zolaire:CreateWindow(WindowConfig)
         TabButton.TextColor3 = Zolaire.Colors.Text
         TabButton.BackgroundColor3 = Zolaire.Colors.Element
         TabButton.Size = UDim2.new(0, 80, 0, 30)
-        TabButton.Position = UDim2.new(0, 10 + (#Window.Elements * 90), 0, 45)
-        TabButton.Parent = Window.Instance
+        TabButton.Position = UDim2.new(0, 10 + (tabCount * 90), 0, 0)
+        TabButton.Parent = TabButtonContainer
         
         ApplyCorner(TabButton, 6)
         ApplyStroke(TabButton)
@@ -482,9 +523,10 @@ function Zolaire:CreateWindow(WindowConfig)
         local TabContent = Instance.new("Frame")
         TabContent.Name = TabName .. "Content"
         TabContent.BackgroundTransparency = 1
-        TabContent.Size = UDim2.new(1, 0, 1, 0)
+        TabContent.Size = UDim2.new(1, 0, 1, -70) -- Adjusted for tab buttons
+        TabContent.Position = UDim2.new(0, 0, 0, 70) -- Below tab buttons
         TabContent.Visible = false
-        TabContent.Parent = Window.Content
+        TabContent.Parent = ContentContainer
         
         local TabLayout = Instance.new("UIListLayout")
         TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -539,6 +581,7 @@ function Zolaire:CreateWindow(WindowConfig)
             SectionFrame.BackgroundColor3 = Zolaire.Colors.Element
             SectionFrame.Size = UDim2.new(1, 0, 0, 0)
             SectionFrame.AutomaticSize = Enum.AutomaticSize.Y
+            SectionFrame.LayoutOrder = #Tab.Elements + 1
             SectionFrame.Parent = Tab.Content
             
             ApplyCorner(SectionFrame, 8)
@@ -651,7 +694,7 @@ function Zolaire:CreateWindow(WindowConfig)
             
             function Section:CreateToggle(ToggleConfig)
                 local Toggle = {}
-                Toggle.Value = ToggleConfig.Default or false
+                Toggle.Value = ToggleConfig.CurrentValue or ToggleConfig.Default or false
                 
                 -- Toggle container
                 local ToggleFrame = Instance.new("Frame")
@@ -762,7 +805,7 @@ function Zolaire:CreateWindow(WindowConfig)
             
             function Section:CreateSlider(SliderConfig)
                 local Slider = {}
-                Slider.Value = SliderConfig.Default or SliderConfig.Min
+                Slider.Value = SliderConfig.CurrentValue or SliderConfig.Default or SliderConfig.Min or 0
                 
                 -- Slider container
                 local SliderFrame = Instance.new("Frame")
@@ -790,7 +833,7 @@ function Zolaire:CreateWindow(WindowConfig)
                 -- Slider value display
                 local SliderValue = Instance.new("TextLabel")
                 SliderValue.Name = "Value"
-                SliderValue.Text = tostring(Slider.Value)
+                SliderValue.Text = tostring(Slider.Value) .. (SliderConfig.Suffix or "")
                 SliderValue.Font = Zolaire.Settings.Font
                 SliderValue.TextSize = 12
                 SliderValue.TextColor3 = Zolaire.Colors.SubText
@@ -832,10 +875,12 @@ function Zolaire:CreateWindow(WindowConfig)
                 
                 -- Update slider
                 local function UpdateSlider()
-                    local Percent = (Slider.Value - SliderConfig.Min) / (SliderConfig.Max - SliderConfig.Min)
+                    local Min = SliderConfig.Min or 0
+                    local Max = SliderConfig.Max or 100
+                    local Percent = (Slider.Value - Min) / (Max - Min)
                     SliderFill.Size = UDim2.new(Percent, 0, 1, 0)
                     SliderThumb.Position = UDim2.new(Percent, -6, 0.5, -6)
-                    SliderValue.Text = tostring(Slider.Value)
+                    SliderValue.Text = tostring(Slider.Value) .. (SliderConfig.Suffix or "")
                 end
                 
                 -- Initialize
@@ -847,13 +892,15 @@ function Zolaire:CreateWindow(WindowConfig)
                 local function UpdateValueFromMouse()
                     local Mouse = game:GetService("Players").LocalPlayer:GetMouse()
                     local RelativeX = math.clamp((Mouse.X - SliderTrack.AbsolutePosition.X) / SliderTrack.AbsoluteSize.X, 0, 1)
-                    Slider.Value = math.floor(SliderConfig.Min + (SliderConfig.Max - SliderConfig.Min) * RelativeX)
+                    local Min = SliderConfig.Min or 0
+                    local Max = SliderConfig.Max or 100
+                    Slider.Value = math.floor(Min + (Max - Min) * RelativeX)
                     
                     if SliderConfig.Increment then
                         Slider.Value = math.floor(Slider.Value / SliderConfig.Increment) * SliderConfig.Increment
                     end
                     
-                    Slider.Value = math.clamp(Slider.Value, SliderConfig.Min, SliderConfig.Max)
+                    Slider.Value = math.clamp(Slider.Value, Min, Max)
                     UpdateSlider()
                     
                     if SliderConfig.Callback then
